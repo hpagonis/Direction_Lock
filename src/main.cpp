@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include "Bounce2.h"
 
 #define UP_PIN 2
 #define RIGHT_PIN 3
@@ -12,77 +11,53 @@
 #define LED_BLINK_DELAY 500
 #define BUTTON_NUM 4
 
-enum Direction {Up, Right, Down, Left};
-Direction sequence[DIRECTIONS_NUMBER] = {Down, Right, Up, Down, Left, Up};
-Direction input[DIRECTIONS_NUMBER];
-int8_t index = -1;
-Bounce2::Button btn_Up = Bounce2::Button();
-Bounce2::Button btn_Right = Bounce2::Button();
-Bounce2::Button btn_Down = Bounce2::Button();
-Bounce2::Button btn_Left = Bounce2::Button();
+enum btnDirection {Up, Left, Down, Right};
+enum btnState {Pressed, Depressed};
+uint8_t sequence[DIRECTIONS_NUMBER] = {Up, Left, Down, Up, Right, Down};
+uint8_t input[DIRECTIONS_NUMBER];
+uint8_t pins[4] = {2,3,4,5};
+uint8_t btnStatus[4] = {Depressed, Depressed, Depressed, Depressed};
+const uint8_t btnRst[4] = {0,0,0,0};
 
 void setup() {
+  Serial.begin(115200);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
-  btn_Up.attach(UP_PIN, INPUT);
-  btn_Up.interval(DEBOUNCE_INTERVAL);
-  btn_Up.setPressedState(LOW);
-  btn_Right.attach(RIGHT_PIN, INPUT);
-  btn_Right.interval(DEBOUNCE_INTERVAL);
-  btn_Right.setPressedState(LOW);
-  btn_Down.attach(DOWN_PIN, INPUT);
-  btn_Down.interval(DEBOUNCE_INTERVAL);
-  btn_Down.setPressedState(LOW);
-  btn_Left.attach(LEFT_PIN, INPUT);
-  btn_Left.interval(DEBOUNCE_INTERVAL);
-  btn_Left.setPressedState(LOW);
+  for (int i=0; i<4; i++) {
+    pinMode(pins[i], INPUT);
+  }
+  Serial.println("Board initialized");
 }
 
 void loop() {
-  btn_Up.update();
-  btn_Right.update();
-  btn_Down.update();
-  btn_Left.update();
+  static uint8_t btn_buf[4] = {};
+  for (int i=0; i<4; i++) {
+    btn_buf[i] = btn_buf[i] << 1;
+    btn_buf[i] |= digitalRead(pins[i]) ? 1 : 0;
+  }
 
-  if (btn_Up.pressed()) {
-    input[index] = Up;
-    index++;
-    return;
-  }
-  if (btn_Right.pressed()) {
-    input[index] = Right;
-    index++;
-    return;
-  }
-  if (btn_Down.pressed()) {
-    input[index] = Down;
-    index++;
-    return;
-  }
-  if (btn_Left.pressed()) {
-    input[index] = Left;
-    index++;
-    return;
-  }
-  if (index == DIRECTIONS_NUMBER) {
-    if (memcmp(sequence, input, DIRECTIONS_NUMBER)) {
-      // Incorrect sequence
-      for (int i=0; i<3; i++) {
-        digitalWrite(LED_PIN, HIGH);
-        delay(LED_BLINK_DELAY);
-        digitalWrite(LED_PIN, LOW);
-        delay(LED_BLINK_DELAY);
-      }
-    } else {
-      // Correct sequence
-      digitalWrite(RELAY_PIN, HIGH);
-      digitalWrite(LED_PIN, HIGH);
-      delay(5000);
-      digitalWrite(RELAY_PIN, LOW);
-      digitalWrite(LED_PIN, LOW);
+  //Move array one position and add new input
+  for (int i=0; i<4; i++) {
+    if (btnStatus[i] == Pressed && btn_buf[i] != Pressed) {
+      memmove(&input[1], &input[0], DIRECTIONS_NUMBER - 1);
+      input[0] = i;
     }
-    index = 0;
+    btnStatus[i] = btn_buf[i] ? Depressed : Pressed;
   }
+
+  if (memcmp(input, sequence, DIRECTIONS_NUMBER) == 0) {
+    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(RELAY_PIN, HIGH);
+    Serial.println("Puzzle solved");
+    memset(input, 0, sizeof input);
+  }
+
+  if (memcmp(btn_buf, btnRst, 4) == 0) {
+    digitalWrite(LED_PIN, LOW);
+    digitalWrite(RELAY_PIN, LOW);
+    Serial.println("Puzzle reset");
+  }
+  delay(15);
 }
